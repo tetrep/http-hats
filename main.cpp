@@ -100,30 +100,32 @@ tunnel::tunnel(int argc, char **argv)
 		while(true)
 		{
 			//make a new socket
-			boost::asio::ip::tcp::socket socket(*io_service);
+			local_socket = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+
+			//check for allocation
+			if(local_socket == NULL){std::cerr << "Error allocating new socket" << std::endl; continue;}
 
 			//wait for incoming connection
-			acceptor.accept(socket);
-
-			std::cout << "Accepted..." << std::endl;
+			acceptor.accept(*local_socket);
 
 			//create tunnel
-			new_tunnel = new (nothrow) tunnel(&socket, argv[3], argv[4], argv[1][0]);
+			new_tunnel = new (nothrow) tunnel(local_socket, argv[3], argv[4], argv[1][0]);
 
 			//check allocation
-			if(new_tunnel == NULL){std::cerr << "Error allocating new tunnel" << std::endl;}
+			if(new_tunnel == NULL){std::cerr << "Error allocating new tunnel" << std::endl; delete local_socket; continue;}
 
 			//thread and create tunnel
 			new_thread = new (nothrow) boost::thread(boost::bind(&tunnel::run, new_tunnel));
 
 			//check for allocation
-			if(new_thread == NULL){std::cerr << "Error allocating new thread" << std::endl;}
-
+			if(new_thread == NULL){std::cerr << "Error allocating new thread" << std::endl; delete new_tunnel; continue;}
+		
 			//lock vector (unlocks after scope exits)
 			boost::mutex::scoped_lock the_lock(*reap_mutex);
 
 			//push thread to vector and tunnel to vector
 			threads.push_back(new_thread);
+
 		}
 	}
 	catch(std::exception &e)

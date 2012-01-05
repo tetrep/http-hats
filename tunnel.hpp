@@ -38,62 +38,70 @@ class tunnel
 
 		~tunnel()
 		{
-			if(work != NULL){io_service->stop();}
-			delete io_service;
-			delete decrypt_me;
-			delete remote_socket;
-			delete local_socket;
-			delete work;
-			delete local_buffer;
-			delete remote_buffer;
+			std::cout << "~tunnel()" << std::endl;
+
+			if(work != NULL){io_service->stop(); delete work;}
+			if(remote_socket != NULL){remote_socket->close(); delete remote_socket;}
+			if(local_socket != NULL){local_socket->close(); delete local_socket;}
+			if(io_service != NULL){delete io_service;}
+			if(local_buffer != NULL){delete local_buffer;}
+			if(remote_buffer != NULL){delete remote_buffer;}
 		}
 	
-		tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_port, char clientserver)
+		tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_port, char clientserver) throw()
 		{
-			//set up buffer size
-			receive_buffer_size = RECEIVE_BUFFER_SIZE;
-
-			local_buffer = new (nothrow) char[receive_buffer_size];
-			remote_buffer = new (nothrow) char[receive_buffer_size];
-
-			//check for allocation
-			if(local_buffer == NULL || remote_buffer == NULL){std::cerr << "Error allocating buffer(s)" << std::endl; return;}
-
-			//set up io_service
-			io_service = new (nothrow) boost::asio::io_service();
-
-			//check for allocation
-			if(io_service == NULL){std::cerr << "Error allocating io_service" << std::endl; return;}
-
-			//will resolve remote address
-			boost::asio::ip::tcp::resolver resolver(*io_service);
-			
-			//build query to feed resolver
-			boost::asio::ip::tcp::resolver::query query(remote, remote_port);
-
-			//resolve!
-			boost::asio::ip::tcp::resolver::iterator endpoints = resolver.resolve(query);
-
-			//set up encrypt/decrypt and local/remote sockets 
-			if(clientserver == 'c')
+			try
 			{
-				local_socket = encrypt_me = socket;
-				remote_socket = decrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+				//set up buffer size
+				receive_buffer_size = RECEIVE_BUFFER_SIZE;
+	
+				local_buffer = new (nothrow) char[receive_buffer_size];
+				remote_buffer = new (nothrow) char[receive_buffer_size];
+	
+				//check for allocation
+				if(local_buffer == NULL || remote_buffer == NULL){std::cerr << "Error allocating buffer(s)" << std::endl; return;}
+	
+				//set up io_service
+				io_service = new (nothrow) boost::asio::io_service();
+	
+				//check for allocation
+				if(io_service == NULL){std::cerr << "Error allocating io_service" << std::endl; return;}
+	
+				//will resolve remote address
+				boost::asio::ip::tcp::resolver resolver(*io_service);
+				
+				//build query to feed resolver
+				boost::asio::ip::tcp::resolver::query query(remote, remote_port);
+	
+				//resolve!
+				boost::asio::ip::tcp::resolver::iterator endpoints = resolver.resolve(query);
+	
+				//set up encrypt/decrypt and local/remote sockets 
+				if(clientserver == 'c')
+				{
+					local_socket = encrypt_me = socket;
+					remote_socket = decrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+				}
+				else if (clientserver == 's')
+				{
+					local_socket = decrypt_me = socket;
+					remote_socket = encrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+				}
+	
+				//check for allocation
+				if(remote_socket == NULL){std::cerr << "Error allocating remote socket" << std::endl; return;}
+	
+				//connect!
+				boost::asio::connect(*remote_socket, endpoints);
 			}
-			else if (clientserver == 's')
+			catch(std::exception &e)
 			{
-				local_socket = decrypt_me = socket;
-				remote_socket = encrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+				std::cout << "=====ERROR=====" << std::endl
+					<< "Tunnel failed to initialize" << std::endl
+					<< e.what() << std::endl;
+
+				throw e;
 			}
-
-			//check for allocation
-			if(remote_socket == NULL){std::cerr << "Error allocating remote socket" << std::endl; return;}
-
-			//connect!
-			boost::asio::connect(*remote_socket, endpoints);
-
-			//for now, we auto start
-			//this->run();
 		}
 
 		void local_send(const boost::system::error_code &/*error*/, std::size_t /*bytes_transferred*/)
@@ -137,6 +145,7 @@ class tunnel
 				io_service->stop();
 			}
 		}
+
 		//process data and send to local
 		void remote_receive(const boost::system::error_code &/*error*/, std::size_t bytes_transferred)
 		{
@@ -172,25 +181,35 @@ class tunnel
 
 		void run()
 		{
-			//add work to io_service so run will not exit 
-			work = new (nothrow) boost::asio::io_service::work(*io_service);
+			try
+			{
 
-			//check for allocation
-			if(work == NULL){std::cerr << "Error allocating work" << std::endl;}
+				//add work to io_service so run will not exit 
+				work = new (nothrow) boost::asio::io_service::work(*io_service);
+
+				//check for allocation
+				if(work == NULL){std::cerr << "Error allocating work" << std::endl;}
 			
-			//thread io_service.run
-			boost::thread io_service_thread(boost::bind(&boost::asio::io_service::run, io_service));
+				//thread io_service.run
+				boost::thread io_service_thread(boost::bind(&boost::asio::io_service::run, io_service));
 
-			//watch for incoming data
-			local_socket->async_receive(boost::asio::buffer(local_buffer, receive_buffer_size), 
+				//watch for incoming data
+				local_socket->async_receive(boost::asio::buffer(local_buffer, receive_buffer_size), 
 				boost::bind(&tunnel::local_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-			std::cout << "local_socket check..." << std::endl;
-			remote_socket->async_receive(boost::asio::buffer(remote_buffer, receive_buffer_size),
-				boost::bind(&tunnel::remote_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-			std::cout << "remote_socket check..." << std::endl;
 
-			//wait for io_service to exit
-			io_service_thread.join();
-			std::cout << "io_service joined :(" << std::endl;
+				remote_socket->async_receive(boost::asio::buffer(remote_buffer, receive_buffer_size),
+					boost::bind(&tunnel::remote_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+
+				//wait for thread
+				io_service_thread.join();
+			}
+			catch(std::exception &e)
+			{
+				std::cout << "=====ERROR=====" << std::endl
+					<< "Tunnel failed to run" << std::endl
+					<< e.what() << std::endl;
+
+					io_service->stop();
+			}
 		}
 };
