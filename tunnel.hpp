@@ -53,8 +53,8 @@ class tunnel
 			//set up buffer size
 			receive_buffer_size = RECEIVE_BUFFER_SIZE;
 
-			local_buffer = new char[receive_buffer_size];
-			remote_buffer = new char[receive_buffer_size];
+			local_buffer = new (nothrow) char[receive_buffer_size];
+			remote_buffer = new (nothrow) char[receive_buffer_size];
 
 			//check for allocation
 			if(local_buffer == NULL || remote_buffer == NULL){std::cerr << "Error allocating buffer(s)" << std::endl; return;}
@@ -114,14 +114,10 @@ class tunnel
 			else if(remote_socket == decrypt_me){remove_header(local_buffer, bytes_transferred);}
 			else{std::cerr << "Socket should not be encrypted or decrypted :(" << std::endl; io_service->stop(); return;}
 			*/
-			
+
 			try
 			{
 				remote_to_send = bytes_transferred;
-
-
-				if(bytes_transferred != 0){boost::asio::buffer boost_buffer(local_buffer, bytes_transferred);}
-				else{boost::asio::buffer boost_buffer();} 
 
 				//send to remote
 				remote_sent = remote_socket->send(boost::asio::buffer(local_buffer, bytes_transferred));
@@ -155,9 +151,6 @@ class tunnel
 			{
 
 				local_to_send = bytes_transferred;
-
-				if(bytes_transferred != 0){boost::asio::buffer boost_buffer(remote_buffer, bytes_transferred);}
-				else{boost::asio::buffer boost_buffer();} 
 
 				//sent to local
 				local_sent = local_socket->send(boost::asio::buffer(remote_buffer, bytes_transferred));
