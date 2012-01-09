@@ -1,2 +1,8 @@
 TODO:
 	The README
+	static http-headers (no parsing, using buffers)
+	setting derived from config file
+	daemon
+	http 1.1 compliant (or mostly compliant) server
+	dynamic http-headers using config file
+	public key authentication (ideally resuing ssh keys)

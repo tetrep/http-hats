@@ -6,10 +6,12 @@
 
 //how many bytes of allocated but unused space in vector before i shrink
 #define GARBAGE_RATE 1048576
-//maximum amount of data (in bytes) to receive
+//maximum amount of data (in bytes) to send/receive
 #define RECEIVE_BUFFER_SIZE 1024
-//maximum amount of data (in bytes) to send
-#define SEND_BUFFER_SIZE 1024
+//maximum size of header
+#define HEADER_MAX_SIZE 100
+//lenght of tail </img>
+#define TAIL_LENGTH 6
 
 using namespace std;
 
@@ -26,10 +28,11 @@ class tunnel
 		char *local_buffer;
 		char *remote_buffer;
 		unsigned int receive_buffer_size;
-		int local_sent;
-		int remote_sent;
-		int local_to_send;
-		int remote_to_send;
+		unsigned int tail_length;
+		std::size_t local_sent;
+		std::size_t remote_sent;
+		std::size_t local_to_send;
+		std::size_t remote_to_send;
 
 	public:
 
@@ -52,6 +55,9 @@ class tunnel
 		{
 			try
 			{
+				//set up tail length
+				tail_length = TAIL_LENGTH;
+
 				//set up buffer size
 				receive_buffer_size = RECEIVE_BUFFER_SIZE;
 	
@@ -97,11 +103,21 @@ class tunnel
 			catch(std::exception &e)
 			{
 				std::cout << "=====ERROR=====" << std::endl
-					<< "Tunnel failed to initialize" << std::endl
-					<< e.what() << std::endl;
+					<< "Tunnel failed to initialize" << std::endl;
+
+				if(remote_socket != NULL){remote_socket->close(); delete remote_socket;}
+				if(local_socket != NULL){local_socket->close(); delete local_socket;}
+				if(io_service != NULL){delete io_service;}
+				if(local_buffer != NULL){delete local_buffer;}
+				if(remote_buffer != NULL){delete remote_buffer;}
 
 				throw e;
 			}
+		}
+	
+		void http-server(char *buffer)
+		{
+
 		}
 
 		void local_send(const boost::system::error_code &/*error*/, std::size_t /*bytes_transferred*/)
@@ -116,13 +132,6 @@ class tunnel
 
 		void local_receive(const boost::system::error_code &/*error*/, std::size_t bytes_transferred)
 		{
-			/*
-			//should i add header or remove header?
-			if(remote_socket == encrypt_me){add_header(local_buffer, bytes_transferred);}
-			else if(remote_socket == decrypt_me){remove_header(local_buffer, bytes_transferred);}
-			else{std::cerr << "Socket should not be encrypted or decrypted :(" << std::endl; io_service->stop(); return;}
-			*/
-
 			try
 			{
 				remote_to_send = bytes_transferred;
@@ -149,16 +158,8 @@ class tunnel
 		//process data and send to local
 		void remote_receive(const boost::system::error_code &/*error*/, std::size_t bytes_transferred)
 		{
-			/*
-			//should i add header or remove header?
-			if(remote_socket == encrypt_me){add_header(remote_buffer, bytes_transferred);}
-			else if(remote_socket == decrypt_me){remove_header(remote_buffer, bytes_transferred);}
-			else{std::cerr << "Socket should not be encrypted or decrypted :(" << std::endl; io_service->stop(); return;}
-			*/
-			
 			try
 			{
-
 				local_to_send = bytes_transferred;
 
 				//sent to local
