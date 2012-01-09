@@ -3,11 +3,16 @@ TODO:
 [1]	//basic proxy functionality with threading
 [2]	//garbage collection of dead tunnels(via reap)
 [3]	static http-headers (no parsing, using buffers)
-[4]	settings derived from config file
+[4]	//settings derived from config file
 [5]	daemon
 [6]	http 1.1 compliant (or mostly compliant) server
 [7]	dynamic http-headers using config file
 [8]	key authentication (ideally resuing ssh keys)
+[9]	dynamic tunnel exit (currently determined at start up)
 
 POSSIBLE BUGS:
 [1] exception from io_service of listening tunnel if handle is passed, object is reaped, and then handle is called, i havent looked into it fully but this appears to be possible, first step is to make sure connection is closed before killing the object, will worry about after
+
+
+README:
+	first arguement passed is the profile, the program will look for a file named <profile> to load settings

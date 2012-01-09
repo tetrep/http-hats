@@ -34,6 +34,34 @@ void tunnel::reap(std::vector <boost::thread *> threads)
 	}
 }
 
+void tunnel::load_settings(char *file, char *clientserver) throw()
+{
+		std::ifstream settings(file);
+
+		if(!settings.is_open()){throw 1;}
+
+
+		settings >> *clientserver
+		//header and tail sizes
+			>> header_size >> tail_size
+		//receive buffer size
+			>> receive_buffer_size;
+
+		//allocate header and tail
+		the_header = new (nothrow) char[header_size];
+		the_tail = new (nothrow) char[tail_size];
+
+		if(the_header == NULL || the_tail == NULL){throw "Could not allocate header and/or tail";}
+
+		//read header
+		settings.get(the_header, header_size, 'Q');
+
+		//read tail
+		settings.get(the_tail, tail_size, 'Q');
+
+		settings.close();
+}
+
 tunnel::tunnel(int argc, char **argv)
 {
 
@@ -43,11 +71,16 @@ tunnel::tunnel(int argc, char **argv)
 		{
 			std::cerr << "Error, correct format is..." << std::endl
 				<<"==for client==" << std::endl
-					<< "   c [local port] [remote host] [remote port]" << std::endl
+					<< "   client [local port] [remote host] [remote port]" << std::endl
 				<< "==for server==" << std::endl 
-					<< "   s [local port] [remote host] [remote port]" << std::endl;
+					<< "   server [local port] [remote host] [remote port]" << std::endl;
 			return;
 		}
+
+		char clientserver;
+
+		load_settings(argv[1], &clientserver);
+
 		//vectors of our threads
 		std::vector <boost::thread *> threads;
 
@@ -109,7 +142,7 @@ tunnel::tunnel(int argc, char **argv)
 			acceptor.accept(*local_socket);
 
 			//create tunnel
-			new_tunnel = new (nothrow) tunnel(local_socket, argv[3], argv[4], argv[1][0]);
+			new_tunnel = new (nothrow) tunnel(local_socket, argv[3], argv[4], clientserver, the_header, the_tail, header_size, tail_size, receive_buffer_size);
 
 			//check allocation
 			if(new_tunnel == NULL){std::cerr << "Error allocating new tunnel" << std::endl; delete local_socket; continue;}
