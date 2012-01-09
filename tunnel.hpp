@@ -4,12 +4,14 @@
 #include <boost/asio.hpp>
 #include <vector>
 
+//version
+#define VERSION 1.0
 //how many bytes of allocated but unused space in vector before i shrink
 #define GARBAGE_RATE 1048576
-//maximum amount of data (in bytes) to send/receive
+//maximum amount of data (in bytes, unless char != byte) to send/receive
 #define RECEIVE_BUFFER_SIZE 1024
-//maximum size of header
-#define HEADER_MAX_SIZE 100
+//size of header (after padding)
+#define HEADER_SIZE 100
 //lenght of tail </img>
 #define TAIL_LENGTH 6
 
@@ -134,6 +136,8 @@ class tunnel
 		{
 			try
 			{
+				if(bytes_transferred < (HEADER_SIZE + TAIL_SIZE)){std::cerr << "Invalid packet" << std::endl; io_service->stop(); return;}
+
 				remote_to_send = bytes_transferred;
 
 				//send to remote
@@ -160,6 +164,8 @@ class tunnel
 		{
 			try
 			{
+				if(bytes_transferred < (HEADER_SIZE + TAIL_SIZE)){std::cerr << "Invalid packet" << std::endl; io_service->stop(); return;}
+
 				local_to_send = bytes_transferred;
 
 				//sent to local
