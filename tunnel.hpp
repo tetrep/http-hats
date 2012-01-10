@@ -152,7 +152,7 @@ class tunnel
 				if(socket == decrypt_me)
 				{
 					//make sure packet has head + tail + data
-					if(bytes_transferred < (header_size + tail_size + 1)){std::cerr << "Invalid packet" << std::endl; throw 1;}
+					if(bytes_transferred < (header_size + tail_size + 1)){std::cerr << "Invalid packet" << std::endl; throw std::exception();}
 					//ignore header and tail
 					else{temp = &buffer[header_size]; bytes_transferred -= tail_size;}
 				}
@@ -178,9 +178,9 @@ class tunnel
 		{
 			try
 			{
-				hats(local_socket, local_temp, local_buffer, remote_to_send);
+				remote_to_send = bytes_transferred;
 
-				//remote_to_send = bytes_transferred;
+				hats(local_socket, local_temp, local_buffer, remote_to_send);
 
 				//send to remote
 				remote_sent = remote_socket->send(boost::asio::buffer(local_buffer, remote_to_send));
@@ -206,10 +206,10 @@ class tunnel
 		{
 			try
 			{
-				hats(local_socket, remote_temp, remote_buffer, local_to_send);
-		
-				//local_to_send = bytes_transferred;
+				local_to_send = bytes_transferred;
 
+				hats(remote_socket, remote_temp, remote_buffer, local_to_send);
+		
 				//sent to local
 				local_sent = local_socket->send(boost::asio::buffer(remote_buffer, local_to_send));
 				if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl; io_service->stop(); return;}

@@ -38,7 +38,7 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 {
 		std::ifstream settings(file);
 
-		if(!settings.is_open()){throw 1;}
+		if(!settings.is_open()){throw std::exception();}
 
 
 		settings >> *clientserver
@@ -51,13 +51,26 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 		the_header = new (nothrow) char[header_size];
 		the_tail = new (nothrow) char[tail_size];
 
-		if(the_header == NULL || the_tail == NULL){throw "Could not allocate header and/or tail";}
+		if(the_header == NULL || the_tail == NULL){throw std::exception();}
+
+		settings.get();
 
 		//read header
 		settings.get(the_header, header_size, 'Q');
 
+		settings.get();
+
 		//read tail
 		settings.get(the_tail, tail_size, 'Q');
+
+		std::cout << "the header:" << std::endl
+			<< the_header << std::endl
+			<< "the tail:" << std::endl
+			<< the_tail << std::endl
+			<< "header size:" << std::endl
+			<< header_size << std::endl
+			<< "tail size:" << std::endl
+			<< tail_size << std::endl;
 
 		settings.close();
 }
