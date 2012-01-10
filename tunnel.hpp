@@ -158,7 +158,7 @@ class tunnel
 				}
 
 				//add header
-				else
+				else if (bytes_transferred > 0)
 				{
 					//dont care if sender sent too much, truncate
 					for(std::size_t i = 0; i < bytes_transferred && i < (receive_buffer_size - header_size); i++)
