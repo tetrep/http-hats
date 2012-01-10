@@ -1,13 +1,16 @@
 #include "tunnel.hpp"
 
-void tunnel::reap(std::vector <boost::thread *> threads)
+void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex,boost::mutex *fin_mutex)
 {
 	//keep alive
 	while(true)
 	{
 		//dont run too fast
 		boost::this_thread::sleep(boost::posix_time::seconds(10));
-		
+
+		//is entrance still up?
+		if(fin_mutex->try_lock()){return;}
+
 		//gimme mutex
 		boost::mutex::scoped_lock the_lock(*reap_mutex);
 
@@ -77,6 +80,20 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 
 tunnel::tunnel(int argc, char **argv)
 {
+	//nulls
+	io_service = NULL;
+	encrypt_me = NULL;
+	decrypt_me = NULL;
+	local_socket = NULL;
+	remote_socket = NULL;
+	work = NULL;
+	local_buffer = NULL;
+	remote_buffer = NULL;
+	local_temp = NULL;
+	remote_temp = NULL;
+	the_header = NULL;
+	the_tail = NULL;
+	boost::thread *reap_thread = NULL;
 
 	try
 	{
@@ -128,13 +145,18 @@ tunnel::tunnel(int argc, char **argv)
 		//thread off io_service
 		boost::thread io_service_thread(boost::bind(&boost::asio::io_service::run, io_service));
 
-		//create reap_mutex
-		reap_mutex = new (nothrow) boost::mutex();
+		//create reap_mutex and fin_mutex
+		boost::mutex *reap_mutex = new (nothrow) boost::mutex();
+		boost::mutex *fin_mutex = new (nothrow) boost::mutex();
 
-		if(reap_mutex == NULL){std::cerr << "Error, failed to allocate mutex" << std::endl;}
+		if(reap_mutex == NULL || fin_mutex == NULL){std::cerr << "Error, failed to allocate mutex(es)" << std::endl; throw std::exception();}
 
-		//thread off reap() to kill dead threads
-		boost::thread reap_thread(&tunnel::reap, this, threads);
+		//thread off reap() to kill dead threads, but first, mutex to keep reap alive
+		boost::mutex::scoped_lock fin(*fin_mutex);
+
+		reap_thread = new (nothrow) boost::thread(boost::bind(&tunnel::reap, this, threads, reap_mutex, fin_mutex));
+
+		if(reap_thread == NULL){std::cerr << "Error allocating reap thread" << std::endl; throw std::exception();}
 
 		//tunnel pointer
 		tunnel *new_tunnel;
@@ -179,6 +201,8 @@ tunnel::tunnel(int argc, char **argv)
 		std::cerr << "=====ERROR=====" << std::endl
 			<< e.what() << std::endl;
 	}
+	halt();
+	if(reap_thread != NULL){reap_thread->join();}
 }
 
 int main(int argc, char **argv)
