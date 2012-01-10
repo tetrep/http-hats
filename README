@@ -3,7 +3,7 @@ TODO:
 [0]	The README
 [1]	//basic proxy functionality with threading
 [2]	//garbage collection of dead tunnels(via reap)
-[3]	static http-headers (no parsing, using buffers)
+[3]	//static http-headers (no parsing, using buffers)
 [4]	//settings derived from config file
 [5]	daemon
 [6]	http 1.1 compliant (or mostly compliant) server
