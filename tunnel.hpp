@@ -6,7 +6,7 @@
 #include <vector>
 
 //version
-#define VERSION 1.0
+#define VERSION v1.0
 //how many bytes of allocated but unused space in vector before i shrink
 #define GARBAGE_RATE 1048576
 
