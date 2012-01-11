@@ -1,13 +1,16 @@
 #include "tunnel.hpp"
 
-void tunnel::reap(std::vector <boost::thread *> threads)
+void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex,boost::mutex *fin_mutex)
 {
 	//keep alive
 	while(true)
 	{
 		//dont run too fast
 		boost::this_thread::sleep(boost::posix_time::seconds(10));
-		
+
+		//is entrance still up?
+		if(fin_mutex->try_lock()){return;}
+
 		//gimme mutex
 		boost::mutex::scoped_lock the_lock(*reap_mutex);
 
@@ -34,8 +37,54 @@ void tunnel::reap(std::vector <boost::thread *> threads)
 	}
 }
 
+void tunnel::load_settings(char *file, char *clientserver) throw()
+{
+		std::ifstream settings(file);
+
+		if(!settings.is_open()){throw std::exception();}
+
+
+		settings >> *clientserver
+		//header and tail sizes
+			>> header_size >> tail_size
+		//receive buffer size
+			>> receive_buffer_size;
+
+		//allocate header and tail
+		the_header = new (nothrow) char[header_size];
+		the_tail = new (nothrow) char[tail_size];
+
+		if(the_header == NULL || the_tail == NULL){throw std::exception();}
+
+		settings.get();
+
+		//read header
+		settings.get(the_header, header_size, 'Q');
+
+		settings.get();
+
+		//read tail
+		settings.get(the_tail, tail_size, 'Q');
+
+		std::cout << "the header:" << std::endl
+			<< the_header << std::endl
+			<< "the tail:" << std::endl
+			<< the_tail << std::endl
+			<< "header size:" << std::endl
+			<< header_size << std::endl
+			<< "tail size:" << std::endl
+			<< tail_size << std::endl;
+
+		settings.close();
+}
+
 tunnel::tunnel(int argc, char **argv)
 {
+	//nulls
+	null();
+
+	//reap_thread
+	boost::thread *reap_thread = NULL;
 
 	try
 	{
@@ -43,20 +92,21 @@ tunnel::tunnel(int argc, char **argv)
 		{
 			std::cerr << "Error, correct format is..." << std::endl
 				<<"==for client==" << std::endl
-					<< "   c [local port] [remote host] [remote port]" << std::endl
+					<< "   client [local port] [remote host] [remote port]" << std::endl
 				<< "==for server==" << std::endl 
-					<< "   s [local port] [remote host] [remote port]" << std::endl;
+					<< "   server [local port] [remote host] [remote port]" << std::endl;
 			return;
 		}
+
+		char clientserver;
+
+		load_settings(argv[1], &clientserver);
+
 		//vectors of our threads
 		std::vector <boost::thread *> threads;
 
 		//the io_service
-		io_service = new (nothrow) boost::asio::io_service();
-
-		//check for allocation
-		if(io_service == NULL){std::cerr << "Error allocating io_service" << std::endl;}
-
+		io_service = new boost::asio::io_service();
 
 		//add work to io_service
 		boost::asio::io_service::work work = boost::asio::io_service::work(*io_service);
@@ -82,13 +132,17 @@ tunnel::tunnel(int argc, char **argv)
 		//thread off io_service
 		boost::thread io_service_thread(boost::bind(&boost::asio::io_service::run, io_service));
 
-		//create reap_mutex
-		reap_mutex = new (nothrow) boost::mutex();
+		//create reap_mutex and fin_mutex
+		boost::mutex *reap_mutex = NULL;
+		boost::mutex *fin_mutex = NULL;
 
-		if(reap_mutex == NULL){std::cerr << "Error, failed to allocate mutex" << std::endl;}
+		reap_mutex = new boost::mutex();
+		fin_mutex = new boost::mutex();
 
-		//thread off reap() to kill dead threads
-		boost::thread reap_thread(&tunnel::reap, this, threads);
+		//thread off reap() to kill dead threads, but first, mutex to keep reap alive
+		boost::mutex::scoped_lock fin(*fin_mutex);
+
+		reap_thread = new boost::thread(boost::bind(&tunnel::reap, this, threads, reap_mutex, fin_mutex));
 
 		//tunnel pointer
 		tunnel *new_tunnel;
@@ -109,7 +163,7 @@ tunnel::tunnel(int argc, char **argv)
 			acceptor.accept(*local_socket);
 
 			//create tunnel
-			new_tunnel = new (nothrow) tunnel(local_socket, argv[3], argv[4], argv[1][0]);
+			new_tunnel = new (nothrow) tunnel(local_socket, argv[3], argv[4], clientserver, the_header, the_tail, header_size, tail_size, receive_buffer_size);
 
 			//check allocation
 			if(new_tunnel == NULL){std::cerr << "Error allocating new tunnel" << std::endl; delete local_socket; continue;}
@@ -118,7 +172,7 @@ tunnel::tunnel(int argc, char **argv)
 			new_thread = new (nothrow) boost::thread(boost::bind(&tunnel::run, new_tunnel));
 
 			//check for allocation
-			if(new_thread == NULL){std::cerr << "Error allocating new thread" << std::endl; delete new_tunnel; continue;}
+			if(new_thread == NULL){std::cerr << "Error allocating new thread" << std::endl; delete local_socket; delete new_tunnel; continue;}
 		
 			//lock vector (unlocks after scope exits)
 			boost::mutex::scoped_lock the_lock(*reap_mutex);
@@ -133,12 +187,16 @@ tunnel::tunnel(int argc, char **argv)
 		std::cerr << "=====ERROR=====" << std::endl
 			<< e.what() << std::endl;
 	}
+	halt();
+	if(reap_thread != NULL){reap_thread->join();}
 }
 
 int main(int argc, char **argv)
 {
+	std::cout << "Hello" << std::endl;
 	tunnel *new_tunnel;
 	new_tunnel = new (nothrow) tunnel(argc, argv);
 	delete new_tunnel;
+	std::cout << "Goodbye" << std::endl;
 	return 1;
 }
