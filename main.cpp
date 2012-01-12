@@ -40,8 +40,22 @@ void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex
 void tunnel::load_settings(char *file, char *clientserver) throw()
 {
 		std::ifstream settings(file);
+		string keyword;
 
 		if(!settings.is_open()){throw std::exception();}
+
+		while(!settings.eof())
+		{
+			settings >> keyword;
+
+			switch(keyword)
+			{
+				case "ClientServer:":	settings >> clientserver; break;
+				case "HeaderSize:":	settings >> header_size; break;
+				case "TailSize:":	settings >> tail_size; break;
+				case "Header:":		settings.get(the_header, header_size, delim); break;
+			}
+		}
 
 
 		settings >> *clientserver
