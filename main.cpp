@@ -1,6 +1,6 @@
 #include "tunnel.hpp"
 
-void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex,boost::mutex *fin_mutex)
+void tunnel::reap(std::vector <boost::thread *> *threads, std::vector <tunnel *> *tunnels, boost::mutex *reap_mutex,boost::mutex *fin_mutex)
 {
 	//keep alive
 	while(true)
@@ -14,20 +14,27 @@ void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex
 		//gimme mutex
 		boost::mutex::scoped_lock the_lock(*reap_mutex);
 
+		std::cout << "Awaken!" << std::endl;
+
 		//iterate through threads
-		for(std::size_t i = 0; i < threads.size(); i++)
+		for(std::size_t i = 0; i < (*threads).size(); i++)
 		{
 			//is thread done?
-			if(threads[i]->joinable())
+			if((*tunnels)[i]->is_alive()->try_lock())
 			{
+				//unlock so we can kill it
+				(*tunnels)[i]->is_alive()->unlock();
+
 				//join thread
-				threads[i]->join();
+				(*threads)[i]->join();
 	
-				//delete thread
-				delete threads[i];
+				//delete thread and tunnel
+				delete (*threads)[i];
+				delete (*tunnels)[i];
 	
-				//erase thread pointer
-				threads.erase(threads.begin() + i);
+				//erase thread pointer and tunnel pointer
+				(*threads).erase((*threads).begin() + i);
+				(*tunnels).erase((*tunnels).begin() + i);
 			}
 		}
 		
@@ -90,7 +97,6 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 			else if(keyword == "ReceiveBufferSize:"){	settings >> receive_buffer_size;}
 		}
 
-		std::cout << the_header << std::endl << the_tail << std::endl;
 		settings.close();
 	}
 	catch(std::exception &e)
@@ -160,6 +166,7 @@ tunnel::tunnel(int argc, char **argv)
 
 		//vectors of our threads
 		std::vector <boost::thread *> threads;
+		std::vector <tunnel *> tunnels;
 
 		//the io_service
 		io_service = new boost::asio::io_service();
@@ -198,7 +205,7 @@ tunnel::tunnel(int argc, char **argv)
 		//thread off reap() to kill dead threads, but first, mutex to keep reap alive
 		boost::mutex::scoped_lock fin(*fin_mutex);
 
-		reap_thread = new boost::thread(boost::bind(&tunnel::reap, this, threads, reap_mutex, fin_mutex));
+		reap_thread = new boost::thread(boost::bind(&tunnel::reap, this, &threads, &tunnels, reap_mutex, fin_mutex));
 
 		//tunnel pointer
 		tunnel *new_tunnel;
@@ -235,6 +242,7 @@ tunnel::tunnel(int argc, char **argv)
 
 			//push thread to vector and tunnel to vector
 			threads.push_back(new_thread);
+			tunnels.push_back(new_tunnel);
 
 		}
 	}
