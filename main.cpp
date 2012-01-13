@@ -39,8 +39,35 @@ void tunnel::reap(std::vector <boost::thread *> threads,boost::mutex *reap_mutex
 
 void tunnel::load_settings(char *file, char *clientserver) throw()
 {
+	try
+	{
+		int i;
+		for(i = 0; file[i] != '\0'; i++){if(file[i] == '.'){break;}}
+
+		if(file[i] == '\0')
+		{
+			char *temp = new char[i+6];
+			for(i = 0; file[i] != '\0'; i++){temp[i] = file[i];}
+			temp[i] = '.';
+			temp[i+1] = 'c';
+			temp[i+2] = 'o';
+			temp[i+3] = 'n';
+			temp[i+4] = 'f';
+			temp[i+5] = '\0';
+
+			file = temp;
+		}
+
 		std::ifstream settings(file);
 		string keyword;
+
+		//set defaults
+		char delim = 'Q';
+		*clientserver = 'f';
+		header_size = 100;
+		tail_size = 100;
+		receive_buffer_size = 1024;
+		the_header = the_tail = NULL;
 
 		if(!settings.is_open()){throw std::exception();}
 
@@ -48,16 +75,30 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 		{
 			settings >> keyword;
 
-			switch(keyword)
-			{
-				case "ClientServer:":	settings >> clientserver; break;
-				case "HeaderSize:":	settings >> header_size; break;
-				case "TailSize:":	settings >> tail_size; break;
-				case "Header:":		settings.get(the_header, header_size, delim); break;
-			}
+			if(keyword[0] == '/' && keyword.size() > 1 && keyword[1] == '/'){continue;}
+
+			if(keyword == "ClientServer:"){			settings >> *clientserver;}
+			else if(keyword ==  "HeaderSize:"){		settings >> header_size;}
+			else if(keyword == "TailSize:"){		settings >> tail_size;}
+			else if(keyword == "Header:"){			the_header = new char[header_size]; 
+									settings.get();
+									settings.get(the_header, header_size, delim);}
+			else if(keyword ==  "Tail:"){			the_tail = new char[tail_size];
+									settings.get();
+									settings.get(the_tail, tail_size, delim);}
+			else if(keyword == "Delimiter:"){		settings >> delim;}
+			else if(keyword == "ReceiveBufferSize:"){	settings >> receive_buffer_size;}
 		}
 
+		std::cout << the_header << std::endl << the_tail << std::endl;
+		settings.close();
+	}
+	catch(std::exception &e)
+	{
+		throw e;
+	}
 
+/*
 		settings >> *clientserver
 		//header and tail sizes
 			>> header_size >> tail_size
@@ -90,6 +131,7 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 			<< tail_size << std::endl;
 
 		settings.close();
+*/
 }
 
 tunnel::tunnel(int argc, char **argv)
