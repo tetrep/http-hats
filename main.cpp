@@ -14,8 +14,6 @@ void tunnel::reap(std::vector <boost::thread *> *threads, std::vector <tunnel *>
 		//gimme mutex
 		boost::mutex::scoped_lock the_lock(*reap_mutex);
 
-		std::cout << "Awaken!" << std::endl;
-
 		//iterate through threads
 		for(std::size_t i = 0; i < (*threads).size(); i++)
 		{
@@ -89,14 +87,27 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
 			else if(keyword == "TailSize:"){		settings >> tail_size;}
 			else if(keyword == "Header:"){			the_header = new char[header_size]; 
 									settings.get();
-									settings.get(the_header, header_size, delim);}
+									settings.get(the_header, header_size, delim);
+									header_size = settings.gcount();}
 			else if(keyword ==  "Tail:"){			the_tail = new char[tail_size];
 									settings.get();
-									settings.get(the_tail, tail_size, delim);}
+									settings.get(the_tail, tail_size, delim);
+									tail_size = settings.gcount();}
 			else if(keyword == "Delimiter:"){		settings >> delim;}
 			else if(keyword == "ReceiveBufferSize:"){	settings >> receive_buffer_size;}
 		}
+/**/
+		std::cout << header_size << std::endl << tail_size << std::endl;
+/*
+		std::size_t j;
 
+		for(j = 0; j < header_size; j++)
+			std::cout << the_header[j];
+		std::cout << std::endl;
+		for(j = 0; j < tail_size; j++)
+			std::cout << the_tail[j];
+		std::cout << std::endl;
+*/
 		settings.close();
 	}
 	catch(std::exception &e)
@@ -201,6 +212,9 @@ tunnel::tunnel(int argc, char **argv)
 
 		reap_mutex = new boost::mutex();
 		fin_mutex = new boost::mutex();
+
+		local_mutex = new boost::mutex();
+		remote_mutex = new boost::mutex();
 
 		//thread off reap() to kill dead threads, but first, mutex to keep reap alive
 		boost::mutex::scoped_lock fin(*fin_mutex);

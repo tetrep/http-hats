@@ -16,8 +16,6 @@ class tunnel
 {
 	private:
 		boost::asio::io_service *io_service;
-		boost::asio::ip::tcp::socket *decrypt_me;
-		boost::asio::ip::tcp::socket *encrypt_me;
 		boost::asio::ip::tcp::socket *remote_socket;
 		boost::asio::ip::tcp::socket *local_socket;
 		boost::asio::io_service::work *work;
@@ -30,6 +28,9 @@ class tunnel
 		char *remote_temp;
 		char *the_header;
 		char *the_tail;
+		char clientserver;
+		bool local_bool;
+		bool remote_bool;
 		unsigned int receive_buffer_size;
 		std::size_t header_size;
 		std::size_t tail_size;
@@ -64,7 +65,7 @@ class tunnel
 		void http_server(char */*IDONTWANNAPARSEYOU*/){}
 
 		//add or remove header
-		void hats(boost::asio::ip::tcp::socket */*socket*/, char *&/*temp*/, char */*buffer*/, std::size_t &/*bytes_transferred*/) throw();
+		void hats(bool /*decrypt*/, char *&/*temp*/, char */*buffer*/, std::size_t &/*bytes_transferred*/) throw();
 
 		void local_receive(const boost::system::error_code &/*error*/, std::size_t bytes_transferred);
 		void remote_receive(const boost::system::error_code &/*error*/, std::size_t /*bytes_transferred*/);
@@ -78,8 +79,11 @@ class tunnel
 		//woo .conf
 		void load_settings(char */*file*/, char */*clientserver*/) throw();
 
-		//until deat
+		//until death
 		boost::mutex *is_alive(){return &alive;}
+
+		//silly bugs
+		void print(char *buffer, std::size_t length);
 };
 
 tunnel::~tunnel()
@@ -112,9 +116,14 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		this->header_size = header_size;
 		this->tail_size = tail_size;
 		this->receive_buffer_size = receive_buffer_size;
+		this->clientserver = clientserver;
 
+		//set up buffers
 		local_buffer = new char[receive_buffer_size];
 		remote_buffer = new char[receive_buffer_size];
+
+		memset(local_buffer, 'r', receive_buffer_size);
+		memset(remote_buffer, 'r', receive_buffer_size);
 
 		//set up mutexes
 		local_mutex = new boost::mutex();
@@ -135,8 +144,11 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		//set up encrypt/decrypt and local/remote sockets 
 		if(clientserver == 'c')
 		{
-			local_socket = encrypt_me = socket;
-			remote_socket = decrypt_me = new boost::asio::ip::tcp::socket(*io_service);
+			local_bool = false;
+			remote_bool = true;
+
+			local_socket = socket;
+			remote_socket = new boost::asio::ip::tcp::socket(*io_service);
 
 			//receive less to be sure we can send full message with header and tail attached
 			local_receive_size = receive_buffer_size - header_size - tail_size;
@@ -144,8 +156,11 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		}
 		else if (clientserver == 's')
 		{
-			local_socket = decrypt_me = socket;
-			remote_socket = encrypt_me = new boost::asio::ip::tcp::socket(*io_service);
+			local_bool = true;
+			remote_bool = false;
+
+			local_socket = socket;
+			remote_socket = new boost::asio::ip::tcp::socket(*io_service);
 
 			//receive less to be sure we can send full message with header and tail attached
 			local_receive_size = receive_buffer_size;
@@ -179,78 +194,99 @@ void tunnel::halt()
 
 	if(local_socket != NULL)
 	{
-		local_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
-		local_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send);
-		local_socket->close();
+		if(local_socket->is_open())
+		{
+			local_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
+			local_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send);
+			local_socket->close();
+		}
+
+		delete local_socket;
+		local_socket = NULL;
 	}
 	if(remote_socket != NULL)
 	{
-		remote_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
-		remote_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send);
-		remote_socket->close();
+		if(remote_socket->is_open())
+		{
+			remote_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
+			remote_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send);
+			remote_socket->close();
+		}
+
+		delete remote_socket;
+		remote_socket = NULL;
 	}
 
 	//halt io_service
 	io_service->stop();
 }
 
-void tunnel::hats(boost::asio::ip::tcp::socket *socket, char *&temp, char *buffer, std::size_t &bytes_transferred) throw()
+void tunnel::hats(bool decrypt, char *&temp, char *buffer, std::size_t &bytes_transferred) throw()
 {
 	temp = buffer;
-	return;
+	//return;
 
-	if(socket == decrypt_me && header_size > 0)
+	if(header_size > 0 && tail_size > 0)
 	{
-		//make sure packet is big enough
-		if(bytes_transferred < (header_size + tail_size)){std::cerr << "Invalid packet" << std::endl; throw std::exception();}
+		if(decrypt)
+		{
+			//make sure packet is big enough
+			if(bytes_transferred <= (header_size + tail_size)){std::cerr << "Packet too small" << std::endl; halt(); return;}//throw std::exception();}
 
-		//ignore head and tail
-		temp = &buffer[header_size];
-		bytes_transferred -= (header_size + tail_size);
-	}
-	else if (header_size > 0)
-	{
-		//too much data!
-		if(bytes_transferred > (receive_buffer_size - header_size - tail_size)){std::cerr << "Invalid packet" << std::endl; throw::std::exception();}
+			//ignore head and tail
+			temp = &buffer[header_size];
+			bytes_transferred -= (header_size + tail_size);
 
-		for(std::size_t i = (bytes_transferred + header_size) - 1; i >= header_size; i--)
-			buffer[i] = buffer[i-header_size];
+			//print(temp, bytes_transferred);
+		}
+		else if(bytes_transferred > 0)
+		{
+			//too much data!
+			if(bytes_transferred > (receive_buffer_size - header_size - tail_size)){std::cerr << "Packet too large" << std::endl; throw std::exception();}
+	
+			for(std::size_t i = (bytes_transferred + header_size) - 1; i >= header_size; i--)
+				buffer[i] = buffer[i-header_size];
+	
+			//add header
+			strncpy(buffer, the_header, header_size);
+	
+			//add tail
+			strncpy(&buffer[header_size+bytes_transferred], the_tail, tail_size);
+	
+			//send more
+			bytes_transferred += (header_size + tail_size);
+	
+			//dont care about you
+			temp = buffer;
 
-		//add header
-		strncpy(buffer, the_header, header_size);
-
-		//add tail
-		strncpy(&buffer[header_size+bytes_transferred], the_tail, tail_size);
-
-		//send more
-		bytes_transferred += (header_size + tail_size);
-
-		//dont care about you
-		temp = buffer;
+			print(temp, header_size);
+			print(&temp[header_size+bytes_transferred], tail_size);
+			print(&buffer[header_size+bytes_transferred], tail_size);
+			print(the_tail, tail_size);
+		}
 	}
 }
 void tunnel::remote_receive(const boost::system::error_code &/*error*/, std::size_t bytes_transferred)
 {
 	try
 	{
-		if(remote_socket == encrypt_me){if(bytes_transferred == 0){halt(); return;}}
-		else if(bytes_transferred == (header_size + tail_size)){halt(); return;}
+		if(bytes_transferred == 0){throw std::exception();}
 
 		local_to_send = bytes_transferred;
 
-		hats(remote_socket, remote_temp, remote_buffer, local_to_send);
+		hats(remote_bool, remote_temp, remote_buffer, local_to_send);
 
 		//grab mutex
 		boost::mutex::scoped_lock the_lock(*remote_mutex);
 
 		//make sure other side of tunnel has collapsed (and thus, called halt())
-		if(local_socket->is_open())
+		if(local_socket != NULL && local_socket->is_open())
 		{
 			//send to local
 			local_sent = local_socket->send(boost::asio::buffer(remote_temp, local_to_send));
-			if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+			if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl; the_lock.unlock(); halt(); return;}
 		}
-		if(remote_socket->is_open())
+		if(remote_socket != NULL && remote_socket->is_open())
 		{
 			//listen for more
 			remote_socket->async_receive(boost::asio::buffer(remote_buffer, remote_receive_size),
@@ -271,28 +307,29 @@ void tunnel::local_receive(const boost::system::error_code &/*error*/, std::size
 {
 	try
 	{
-		if(local_socket == encrypt_me){if(bytes_transferred == 0){halt(); return;}}
-		else if(bytes_transferred == (header_size + tail_size)){halt(); return;}
-		
+		if(bytes_transferred == 0){throw std::exception();}
+
 		remote_to_send = bytes_transferred;
 
-		hats(local_socket, local_temp, local_buffer, remote_to_send);
+		hats(local_bool, local_temp, local_buffer, remote_to_send);
 
 		//grab mutex
 		boost::mutex::scoped_lock the_lock(*local_mutex);
 
-		if(remote_socket->is_open())
+		if(remote_socket != NULL && remote_socket->is_open())
 		{
 			//send to remote
 			remote_sent = remote_socket->send(boost::asio::buffer(local_temp, remote_to_send));
-			if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+			if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl; the_lock.unlock(); halt(); return;}
 		}
-		if(local_socket->is_open())
+		else{throw std::exception();}
+		if(local_socket != NULL && local_socket->is_open())
 		{
 			//listen for more
 			local_socket->async_receive(boost::asio::buffer(local_buffer, local_receive_size), 
 				boost::bind(&tunnel::local_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 		}
+		else{throw std::exception();}
 
 	}
 	catch(std::exception &e)
@@ -344,8 +381,18 @@ void tunnel::run()
 void tunnel::null()
 {
 	io_service = NULL;
-	decrypt_me = encrypt_me = remote_socket = local_socket = NULL;
+	remote_socket = local_socket = NULL;
 	work = NULL;
 	local_mutex = remote_mutex = NULL;
 	local_buffer = remote_buffer = the_header = the_tail = NULL;
+}
+//loop-de-loop
+void tunnel::print(char *buffer, std::size_t length)
+{
+	std::cout << "begin" << std::endl;
+
+	for(std::size_t i = 0; i < length; i++)
+		std::cout << buffer[i];
+
+	std::cout << std::endl << "end" << std::endl;
 }
