@@ -187,10 +187,10 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 
 void tunnel::halt()
 {
+	std::cout << "Halt!" << std::endl;
+
 	boost::mutex::scoped_lock the_lock(*local_mutex);
 	boost::mutex::scoped_lock another_lock(*remote_mutex);
-
-	std::cout << "Halt!" << std::endl;
 
 	if(local_socket != NULL)
 	{
@@ -259,10 +259,10 @@ void tunnel::hats(bool decrypt, char *&temp, char *buffer, std::size_t &bytes_tr
 			//dont care about you
 			temp = buffer;
 
-			print(temp, header_size);
-			print(&temp[header_size+bytes_transferred], tail_size);
-			print(&buffer[header_size+bytes_transferred], tail_size);
-			print(the_tail, tail_size);
+	//		print(temp, header_size);
+	//		print(&temp[header_size+bytes_transferred], tail_size);
+	//		print(&buffer[header_size+bytes_transferred], tail_size);
+	//		print(the_tail, tail_size);
 		}
 	}
 }
@@ -284,14 +284,16 @@ void tunnel::remote_receive(const boost::system::error_code &/*error*/, std::siz
 		{
 			//send to local
 			local_sent = local_socket->send(boost::asio::buffer(remote_temp, local_to_send));
-			if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl; the_lock.unlock(); halt(); return;}
+			if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl; throw std::exception();}
 		}
+		else{throw std::exception();}
 		if(remote_socket != NULL && remote_socket->is_open())
 		{
 			//listen for more
 			remote_socket->async_receive(boost::asio::buffer(remote_buffer, remote_receive_size),
 				boost::bind(&tunnel::remote_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 		}
+		else{throw std::exception();}
 	}
 	catch(std::exception &e)
 	{
@@ -320,7 +322,7 @@ void tunnel::local_receive(const boost::system::error_code &/*error*/, std::size
 		{
 			//send to remote
 			remote_sent = remote_socket->send(boost::asio::buffer(local_temp, remote_to_send));
-			if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl; the_lock.unlock(); halt(); return;}
+			if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl; throw std::exception();}
 		}
 		else{throw std::exception();}
 		if(local_socket != NULL && local_socket->is_open())
