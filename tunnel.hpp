@@ -6,7 +6,8 @@
 #include <vector>
 
 //version
-#define VERSION v1.0
+#define VERSION v1.1
+
 //how many bytes of allocated but unused space in vector before i shrink
 #define GARBAGE_RATE 1048576
 
@@ -21,6 +22,8 @@ class tunnel
 		boost::asio::ip::tcp::socket *remote_socket;
 		boost::asio::ip::tcp::socket *local_socket;
 		boost::asio::io_service::work *work;
+		boost::mutex *local_mutex;
+		boost::mutex *remote_mutex;
 		char *local_buffer;
 		char *remote_buffer;
 		char *local_temp;
@@ -38,6 +41,8 @@ class tunnel
 		std::size_t remote_receive_size;
 
 	public:
+		//make everything NULL
+		void null();
 
 		//*shudders* garbage collection
 		void reap(std::vector <boost::thread *> /*threads*/, boost::mutex */*reap_mutex*/, boost::mutex */*fin_mutex*/);
@@ -90,18 +95,7 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		std::size_t header_size, std::size_t tail_size, unsigned int receive_buffer_size) throw()
 {
 	//nulls
-	io_service = NULL;
-	decrypt_me = NULL;
-	encrypt_me = NULL;
-	remote_socket = NULL;
-	local_socket = NULL;
-	work = NULL;
-	local_buffer = NULL;
-	remote_buffer = NULL;
-	local_temp = NULL;
-	remote_temp = NULL;
-	the_header = NULL;
-	the_tail = NULL;
+	null();
 
 	try
 	{
@@ -112,17 +106,15 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		this->tail_size = tail_size;
 		this->receive_buffer_size = receive_buffer_size;
 
-		local_buffer = new (nothrow) char[receive_buffer_size];
-		remote_buffer = new (nothrow) char[receive_buffer_size];
+		local_buffer = new char[receive_buffer_size];
+		remote_buffer = new char[receive_buffer_size];
 
-		//check for allocation
-		if(local_buffer == NULL || remote_buffer == NULL){std::cerr << "Error allocating buffer(s)" << std::endl; return;}
-
+		//set up mutexes
+		local_mutex = new boost::mutex();
+		remote_mutex = new boost::mutex();
+		
 		//set up io_service
-		io_service = new (nothrow) boost::asio::io_service();
-
-		//check for allocation
-		if(io_service == NULL){std::cerr << "Error allocating io_service" << std::endl; return;}
+		io_service = new boost::asio::io_service();
 
 		//will resolve remote address
 		boost::asio::ip::tcp::resolver resolver(*io_service);
@@ -137,7 +129,7 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		if(clientserver == 'c')
 		{
 			local_socket = encrypt_me = socket;
-			remote_socket = decrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+			remote_socket = decrypt_me = new boost::asio::ip::tcp::socket(*io_service);
 
 			//receive less to be sure we can send full message with header and tail attached
 			local_receive_size = receive_buffer_size - header_size - tail_size;
@@ -146,15 +138,13 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 		else if (clientserver == 's')
 		{
 			local_socket = decrypt_me = socket;
-			remote_socket = encrypt_me = new (nothrow) boost::asio::ip::tcp::socket(*io_service);
+			remote_socket = encrypt_me = new boost::asio::ip::tcp::socket(*io_service);
+>>>>>>> v1.1
 
 			//receive less to be sure we can send full message with header and tail attached
 			local_receive_size = receive_buffer_size;
 			remote_receive_size = receive_buffer_size - header_size - tail_size;
 		}
-
-		//check for allocation
-		if(remote_socket == NULL){std::cerr << "Error allocating remote socket" << std::endl; return;}
 
 		//connect!
 		boost::asio::connect(*remote_socket, endpoints);
@@ -176,6 +166,9 @@ tunnel::tunnel(boost::asio::ip::tcp::socket *socket, char *remote, char *remote_
 
 void tunnel::halt()
 {
+	boost::mutex::scoped_lock the_lock(*local_mutex);
+	boost::mutex::scoped_lock another_lock(*remote_mutex);
+
 	if(local_socket != NULL)
 	{
 		local_socket->shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
@@ -238,13 +231,22 @@ void tunnel::remote_receive(const boost::system::error_code &/*error*/, std::siz
 
 		hats(remote_socket, remote_temp, remote_buffer, local_to_send);
 
-		//sent to local
-		local_sent = local_socket->send(boost::asio::buffer(remote_buffer, local_to_send));
-		if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+		//grab mutex
+		boost::mutex::scoped_lock the_lock(*remote_mutex);
 
-		//listen for more
-		remote_socket->async_receive(boost::asio::buffer(remote_buffer, remote_receive_size),
-			boost::bind(&tunnel::remote_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		//make sure other side of tunnel has collapsed (and thus, called halt())
+		if(local_socket->is_open())
+		{
+			//send to local
+			local_sent = local_socket->send(boost::asio::buffer(remote_buffer, local_to_send));
+			if(local_sent != local_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+		}
+		if(remote_socket->is_open())
+		{
+			//listen for more
+			remote_socket->async_receive(boost::asio::buffer(remote_buffer, remote_receive_size),
+				boost::bind(&tunnel::remote_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		}
 	}
 	catch(std::exception &e)
 	{
@@ -267,14 +269,21 @@ void tunnel::local_receive(const boost::system::error_code &/*error*/, std::size
 
 		hats(local_socket, local_temp, local_buffer, remote_to_send);
 
-		//send to remote
-		remote_sent = remote_socket->send(boost::asio::buffer(local_buffer, remote_to_send));
-		if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+		//grab mutex
+		boost::mutex::scoped_lock the_lock(*local_mutex);
 
-		//listen for more
-		local_socket->async_receive(boost::asio::buffer(local_buffer, local_receive_size), 
-			boost::bind(&tunnel::local_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-
+		if(remote_socket->is_open())
+		{
+			//send to remote
+			remote_sent = remote_socket->send(boost::asio::buffer(local_buffer, remote_to_send));
+			if(remote_sent != remote_to_send){std::cerr << "Failed to send everything" << std::endl;halt(); return;}
+		}
+		if(local_socket->is_open())
+		{
+			//listen for more
+			local_socket->async_receive(boost::asio::buffer(local_buffer, local_receive_size), 
+				boost::bind(&tunnel::local_receive, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		}
 	}
 	catch(std::exception &e)
 	{
@@ -316,4 +325,13 @@ void tunnel::run()
 
 			halt();
 	}
+}
+//make all pointers NULL
+void tunnel::null()
+{
+	io_service = NULL;
+	decrypt_me = encrypt_me = remote_socket = local_socket = NULL;
+	work = NULL;
+	local_mutex = remote_mutex = NULL;
+	local_buffer = remote_buffer = the_header = the_tail = NULL;
 }
