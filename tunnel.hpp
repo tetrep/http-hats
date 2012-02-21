@@ -232,8 +232,6 @@ void tunnel::hats(bool decrypt, char **temp, char *buffer, std::size_t &bytes_tr
     //remove header/tailer
     if(decrypt)
     {
-      print(buffer, bytes_transferred);
-
       std::cout << "header is: " << header_size << std::endl;
 
       //make sure packet is big enough
