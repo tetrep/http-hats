@@ -17,3 +17,4 @@ POSSIBLE BUGS:
 
 README:
 	first arguement passed is the profile, the program will look for a file named <profile> to load settings
+	if no file extension is given, .conf is appended.
