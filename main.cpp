@@ -47,8 +47,10 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
   try
   {
     int i;
+    //does the profile given have a file extension?
     for(i = 0; file[i] != '\0'; i++){if(file[i] == '.'){break;}}
 
+    //no file extension, add .conf
     if(file[i] == '\0')
     {
       char *temp = new char[i+6];
@@ -67,7 +69,7 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
     string keyword;
 
     //set defaults
-    char delim = 'Q';
+    char delim = '*';
     *clientserver = 'f';
     header_size = 100;
     tail_size = 100;
@@ -96,7 +98,7 @@ void tunnel::load_settings(char *file, char *clientserver) throw()
       else if(keyword == "Delimiter:"){   settings >> delim;}
       else if(keyword == "ReceiveBufferSize:"){ settings >> receive_buffer_size;}
     }
-/**/
+    
     std::cout << header_size << std::endl << tail_size << std::endl;
 /*
     std::size_t j;
@@ -161,6 +163,7 @@ tunnel::tunnel(int argc, char **argv)
 
   try
   {
+    //make sure we hae the correct amount of arguments
     if(argc != 5)
     {
       std::cerr << "Error, correct format is..." << std::endl
@@ -260,12 +263,14 @@ tunnel::tunnel(int argc, char **argv)
 
     }
   }
+  //oh noes!
   catch(std::exception &e)
   {
     std::cerr << "=====ERROR=====" << std::endl
       << e.what() << std::endl;
   }
   halt();
+  //wait for gc to end if we started it
   if(reap_thread != NULL){reap_thread->join();}
 }
 
@@ -273,7 +278,7 @@ int main(int argc, char **argv)
 {
   std::cout << "Hello" << std::endl;
   tunnel *new_tunnel;
-  new_tunnel = new (nothrow) tunnel(argc, argv);
+  new_tunnel = new tunnel(argc, argv);
   delete new_tunnel;
   std::cout << "Goodbye" << std::endl;
   return 0;
