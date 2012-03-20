@@ -7,7 +7,7 @@ TODO:
 [4]	//settings derived from config file
 [5]	daemon
 [6]	http 1.1 compliant (or mostly compliant) server
-[7]	dynamic http-headers using config file
+[7]	//dynamic http-headers using config file
 [8]	key authentication (ideally resuing ssh keys)
 [9]	dynamic tunnel exit (currently determined at start up)
 
@@ -17,3 +17,4 @@ POSSIBLE BUGS:
 
 README:
 	first arguement passed is the profile, the program will look for a file named <profile> to load settings
+	if no file extension is given, .conf is appended.
