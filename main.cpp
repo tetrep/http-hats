@@ -1,4 +1,4 @@
-#include "tunnel.hpp"
+#include "tunnel.cpp"
 
 void tunnel::reap(std::vector <boost::thread *> *threads, std::vector <tunnel *> *tunnels, boost::mutex *reap_mutex,boost::mutex *fin_mutex)
 {
