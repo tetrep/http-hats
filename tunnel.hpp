@@ -1,4 +1,4 @@
-#ifnded TUNNEL_HEADER
+#ifndef TUNNEL_HEADER
 #define TUNNEL_HEADER
 //libraries
 #include <iostream>
